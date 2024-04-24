@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.nginx.name }}
+  labels:
+    tier: {{ .Values.nginx.tier }}
+spec:
+  replicas: {{ .Values.nginx.replicas }}
+  selector:
+    matchLabels:
+      tier: {{ .Values.nginx.tier }}
+  strategy:
+    type: {{ .Values.nginx.strategy.type }}
+    {{- if eq .Values.nginx.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ .Values.nginx.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.nginx.strategy.rollingUpdate.maxUnavailable }}
+    {{- end }}
+  template:
+    metadata:
+      labels:
+        tier: {{ .Values.nginx.tier }}
+    spec:
+      containers:
+      - name: {{ .Values.nginx.container.name }}
+        image: {{ .Values.nginx.container.image }}
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        volumeMounts:
+          - name: contents
+            mountPath: /var/www
+
+          - name: nginx-config
+            mountPath: /etc/nginx/conf.d/default.conf
+            subPath: nginx.conf
+
+      restartPolicy: Always
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx
+
+        - name: contents
+          hostPath:
+            path: /mnt/laravel
+            type: Directory

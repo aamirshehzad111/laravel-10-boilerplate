@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.app.name }}
+  labels:
+    tier: {{ .Values.app.tier }}
+spec:
+  replicas: {{ .Values.app.replicas }}
+  selector:
+    matchLabels:
+      tier: {{ .Values.app.tier }}
+  strategy:
+    type: {{ .Values.app.strategy.type }}
+    {{- if eq .Values.app.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ .Values.app.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.app.strategy.rollingUpdate.maxUnavailable }}
+    {{- end }}
+  template:
+    metadata:
+      labels:
+        tier: {{ .Values.app.tier }}
+    spec:
+      containers:
+      - name: {{ .Values.app.container.name }}
+        image: {{ .Values.app.container.image }}
+        imagePullPolicy: {{ .Values.app.container.imagePullPolicy }}
+        ports:
+        - containerPort: 9000
+          protocol: TCP
+        volumeMounts:
+        - name: app-config
+          mountPath: /usr/local/etc/php/conf.d/app.ini
+          subPath: app.ini
+        resources:
+          requests:
+            cpu: {{ .Values.app.container.resources.requests.cpu }}
+            memory: {{ .Values.app.container.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.app.container.resources.limits.cpu }}
+            memory: {{ .Values.app.container.resources.limits.memory }}
+      restartPolicy: Always
+      volumes:
+      - name: laravel-env
+        configMap:
+          name: laravel-env
+      - name: app-config
+        configMap:
+          name: appini

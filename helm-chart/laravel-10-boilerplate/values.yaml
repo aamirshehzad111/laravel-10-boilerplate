@@ -1,0 +1,165 @@
+imagePullSecrets: []
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Automatically mount a ServiceAccount's API credentials?
+  automount: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+
+
+app:
+  name: app
+  tier: backend
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  container:
+    name: ap-app
+    image: docker.io/library/ap-laravel:latest
+    imagePullPolicy: IfNotPresent
+    ports:
+    - containerPort: 9000
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+  restartPolicy: Always
+
+nginx:
+  name: nginx
+  tier: proxy
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  container:
+    name: ap-nginx
+    image: nginx:alpine
+
+
+hpa:
+  name: app-hpa
+  scaleTargetRef:
+    name: app
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    cpu:
+      averageUtilization: 70
+
+services:
+  - name: app
+    label: backend
+    type: ClusterIP
+    port:
+      port: 9000
+      targetPort: 9000
+  - name: nginx
+    label: proxy
+    type: NodePort
+    port:
+      nodePort: 30009
+      port: 80
+      targetPort: 80
+
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+configMaps:
+  - name: appini
+    fileName: app.ini
+    fileContent: |
+      upload_max_filesize = 30M
+      post_max_size = 32M
+      file_uploads = On
+      max_file_uploads = 10
+      memory_limit = 1024M
+      expose_php = off
+      # redis?
+      #extension=redis.so
+      # Check Dockerfile for opcache php ext
+      opcache.enable=1
+      opcache.memory_consumption=512
+      opcache.interned_strings_buffer=64
+      opcache.max_accelerated_files=20000
+      opcache.validate_timestamps=0
+      opcache.save_comments=1
+      opcache.fast_shutdown=1
+
+  - name: nginx
+    fileName: nginx.conf
+    fileContent: |
+      server {
+          #listen 443 ssl;
+          listen 80;
+
+          #ssl_certificate /var/www/certs/ssl.crt;
+          #ssl_certificate_key /var/www/certs/ssl.key;
+
+          client_max_body_size 30m;
+          index index.php index.html;
+          error_log  /var/log/nginx/error.log;
+          access_log /var/log/nginx/access.log;
+          root /var/www/public;
+
+          location ~ \.php$ {
+              try_files $uri =404;
+              fastcgi_split_path_info ^(.+\.php)(/.+)$;
+              fastcgi_pass app:9000;
+              fastcgi_index index.php;
+              include fastcgi_params;
+              fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+              fastcgi_param PATH_INFO $fastcgi_path_info;
+
+              gzip on;
+              gzip_vary on;
+              gzip_proxied any;
+              gzip_http_version 1.1;
+              gzip_min_length 128;
+              gzip_types application/javascript application/x-javascript text/html application/json;
+          }
+
+          location ~* \.(js|css)$ {
+              gzip_proxied any;
+              expires 1y;
+              access_log off;
+              add_header Cache-Control "public";
+              gzip_static on;
+          }
+
+          location / {
+              try_files $uri $uri/ /index.php?$query_string;
+          }
+      }
+      #server {
+      #    listen 80;
+      #    return 301 https://$host$request_uri;
+      #}

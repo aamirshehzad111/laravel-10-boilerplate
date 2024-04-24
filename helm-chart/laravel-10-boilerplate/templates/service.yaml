@@ -1,0 +1,20 @@
+{{- range .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .name }}
+  annotations:
+  labels:
+    tier: {{ .label }}
+spec:
+  type: {{ .type | default "ClusterIP" }}
+  ports:
+    - port: {{ .port.port }}
+      targetPort: {{ .port.targetPort }}
+      {{- if eq .type "NodePort" }}
+      nodePort: {{ .port.nodePort }}
+      {{- end }}
+  selector:
+    tier: {{ .label }}
+{{- end }}

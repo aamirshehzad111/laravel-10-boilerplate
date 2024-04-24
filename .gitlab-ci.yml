@@ -1,0 +1,54 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  ECR_REPOSITORY: "${ECR_REPOSITORY}"
+  AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION}"
+  AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID}"
+  AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY}"
+  CLUSTER_NAME: "eks-nnoscripta"
+
+test:
+  stage: test
+  script:
+    - echo "Running tests..."
+    # here goes php test which i am still figuring out how to execute
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+
+build:
+  stage: build
+  image: docker:stable
+  services:
+    - docker:dind
+  before_script:
+    - apk add --no-cache python3 py3-pip
+    - pip3 install --no-cache-dir awscli
+  script:
+    - echo "Building Docker image..."
+    - docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
+    - echo "Pushing Docker image to ECR..."
+    - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+    - docker push $ECR_REPOSITORY:$IMAGE_TAG
+  environment:
+    name: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+
+deploy:
+  stage: deploy
+  image:
+    name: alpine/k8s:1.27.3
+    entrypoint: [""]
+  before_script:
+    - aws eks update-kubeconfig --name $CLUSTER_NAME --region ${AWS_DEFAULT_REGION}
+  script:
+    - echo "Deploying to EKS using Helm..."
+    - helm upgrade --install boilerplate ./helm-chart/laravel-10-boilerplate -n app --set app.container.image=$ECR_REPOSITORY:$IMAGE_TAG --create-namespace
+  environment:
+    name: production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
